@@ -10,7 +10,7 @@ struct Coord
     float y;
     float z;
 
-     __device__ __host__ Coord() : x(0), y(0), z(0) {}
+    __device__ __host__ Coord() : x(0), y(0), z(0) {}
     __device__ __host__ Coord(float x_, float y_, float z_) : x(x_), y(y_), z(z_) {}
 };
 
@@ -181,13 +181,33 @@ namespace SpatialHashing
         uint32_t *cells;
         // Object ID Array：对于每一个球，包含小球的ID，还有d + 2^d control bits
         uint32_t *objects;
+        // 用以排序
         uint32_t *tempCells;
         uint32_t *tempObjects;
+        // Figure 32-19 的 “Cell index & Size Array”
         uint32_t *indices;
+        //  记录indices的个数，不是数组，而是1个uint32_t
         uint32_t *indexCount;
+        // 大小为256的数组，记录0~255每一位的sum
         uint32_t *radixSums;
     };
 
+    // 用于计算网格索引
+    __device__ void calculateGridIndex(const Coor &position, float cellSize,
+                                       int &gridX, int &gridY, int &gridZ)
+    {
+        gridX = (int)((position.x + LENGTH) / cellSize);
+        gridY = (int)(position.y / cellSize);
+        gridZ = (int)((position.z + WIDTH) / cellSize);
+    }
+
+    // 用于计算cell信息
+    __device__ uint32_t calculateCellInfo(int x, int y, int z, bool isHome)
+    {
+        return (uint32_t)(x << 17 | y << 9 | z << 1 | (isHome ? HOME_CELL : PHANTOM_CELL));
+    }
+
+    // 初始化
     __global__ void InitCells(CellData *cellData, Ball *balls, float cellSize, int cellX, int cellY, int cellZ, int N)
     {
         unsigned int count = 0;
@@ -197,172 +217,107 @@ namespace SpatialHashing
         // 这里是使用GPU进行计算的，因此需要使用GPU的线程来计算，一个线程计算一个球
         for (int i = index; i < N; i += stride)
         {
-            // 每一个球最多会占在 1个home cell + 7个phantom cell = (8个cell)
-            int cellOffset = i * 8; // Fig32-9 Cell ID Array 的第一行黄色的下标
+            int cellOffset = i * 8;
+            Ball &ball = balls[i];
 
-            // Coor pos = balls[i].position;
-            float x = balls[i].position.x;
-            float y = balls[i].position.y;
-            float z = balls[i].position.z;
-            float radius = balls[i].radius;
+            // 计算home cell位置
+            int homeX, homeY, homeZ;
+            calculateGridIndex(ball.position, cellSize, homeX, homeY, homeZ);
 
-            // 计算小球所在的cell
-            int cellIndexX = (int)((x + LENGTH) / cellSize);
-            int cellIndexY = (int)((y) / cellSize);
-            int cellIndexZ = (int)((z + WIDTH) / cellSize);
+            // 设置home cell
+            cellData->cells[cellOffset] = calculateCellInfo(homeX, homeY, homeZ, true);
+            cellData->objects[cellOffset] = i << 1 | HOME_OBJECT;
 
-            // 计算小球的cell信息 + 1bit的home cell标志
-            int homeCellInfo = cellIndexX << 17 | cellIndexY << 9 | cellIndexZ << 1 | HOME_CELL;
-
-            // 计算小球的object信息，这里i是 object ID
-            int homeObjInfo = i << 1 | HOME_OBJECT;
-
-            // 将小球的cell信息和object信息写入到cells和objects中
-            cellData->cells[cellOffset] = homeCellInfo;
-            cellData->objects[cellOffset] = homeObjInfo;
-
-            // 主的cell写完了，接下来处理phantom cell
+            // 处理phantom cells
+            int phantomCount = 1;
             cellOffset++;
-            count++;
 
-            int phantomCellCount = 1;
-
-            // 遍历附近的cell
+            // 遍历相邻网格
             for (int dx = -1; dx <= 1; dx++)
             {
                 for (int dy = -1; dy <= 1; dy++)
                 {
                     for (int dz = -1; dz <= 1; dz++)
                     {
-                        // 如果dx, dy, dz都为0，则表示是home cell，不需要处理，上面已经处理过了
                         if (!(dx | dy | dz))
+                            continue; // 跳过home cell
+
+                        int newX = homeX + dx;
+                        int newY = homeY + dy;
+                        int newZ = homeZ + dz;
+
+                        // 检查边界
+                        if (newX < 0 || newX >= cellX ||
+                            newY < 0 || newY >= cellY ||
+                            newZ < 0 || newZ >= cellZ)
                             continue;
 
-                        // 计算phantom cell的下标
-                        int pCellIndexX = cellIndexX + dx;
-                        int pCellIndexY = cellIndexY + dy;
-                        int pCellIndexZ = cellIndexZ + dz;
+                        // 计算到相邻网格的距离
+                        Coord gridCenter = {
+                            (newX * cellSize) - LENGTH,
+                            newY * cellSize,
+                            (newZ * cellSize) - WIDTH};
 
-                        // 检测是否有越界
-                        if (pCellIndexX < 0 || pCellIndexX >= cellX || pCellIndexY < 0 || pCellIndexY >= cellY || pCellIndexZ < 0 || pCellIndexZ >= cellZ)
-                            continue;
+                        Coord relativePos = {
+                            gridCenter.x - ball.position.x,
+                            gridCenter.y - ball.position.y,
+                            gridCenter.z - ball.position.z};
 
-                        // 计算的是球体中心到相邻网格边界的相对距离
-                        float relativeDistanceX = 0;
-                        float relativeDistanceY = 0;
-                        float relativeDistanceZ = 0;
-
-                        switch (dx)
+                        if (VectorMath::magnitude(relativePos.x, relativePos.y, relativePos.z) < ball.radius)
                         {
-                        case -1:
-                            relativeDistanceX = cellIndexX * cellSize - LENGTH;
-                            break;
-                        case 0:
-                            relativeDistanceX = x;
-                            break;
-                        case 1:
-                            relativeDistanceX = (cellIndexX + 1) * cellSize - LENGTH;
-                            break;
-                        }
-
-                        switch (dy)
-                        {
-                        case -1:
-                            relativeDistanceY = cellIndexY * cellSize;
-                            break;
-                        case 0:
-                            relativeDistanceY = y;
-                            break;
-                        case 1:
-                            relativeDistanceY = (cellIndexY + 1) * cellSize;
-                            break;
-                        }
-
-                        switch (dz)
-                        {
-                        case -1:
-                            relativeDistanceZ = cellIndexZ * cellSize - WIDTH;
-                            break;
-                        case 0:
-                            relativeDistanceZ = z;
-                            break;
-                        case 1:
-                            relativeDistanceZ = (cellIndexZ + 1) * cellSize - WIDTH;
-                            break;
-                        }
-
-                        relativeDistanceX -= x;
-                        relativeDistanceY -= y;
-                        relativeDistanceZ -= z;
-
-                        float length = VectorMath::magnitude(relativeDistanceX, relativeDistanceY, relativeDistanceZ);
-
-                        // 如果这个距离小于球体半径，说明小球的边缘处在了对应的相邻网格里，需要在该网格中创建一个"幻影"记录
-                        if (length < radius)
-                        {
-                            // 计算phantom cell的cell信息
-                            int pCellInfo = pCellIndexX << 17 | pCellIndexY << 9 | pCellIndexZ << 1 | PHANTOM_CELL;
-                            // 将phantom cell的cell信息写入到cells中
-                            int pObjInfo = i << 1 | PHANTOM_OBJECT; // 这里i是 object ID
-                            cellData->cells[cellOffset] = pCellInfo;
-                            cellData->objects[cellOffset] = pObjInfo;
+                            cellData->cells[cellOffset] = calculateCellInfo(newX, newY, newZ, false);
+                            cellData->objects[cellOffset] = i << 1 | PHANTOM_OBJECT;
                             cellOffset++;
-                            count++;
-                            phantomCellCount++;
+                            phantomCount++;
                         }
                     }
                 }
             }
 
-            // 如果phantom cell没有填满，则需要填充0
-            while (phantomCellCount < 8)
+            // 填充剩余的slots
+            while (phantomCount < 8)
             {
                 cellData->cells[cellOffset] = EMPTY_CELL;
-                cellData->objects[cellOffset] = i << 2;
+                cellData->objects[cellOffset] = i << 1;
                 cellOffset++;
-                phantomCellCount++;
+                phantomCount++;
             }
         }
     }
 
     // 并行计算前缀和
-    __device__ void GetPrefixSum(uint32_t *radixSums, unsigned int nBits)
+    __device__ void ParallelPrefixSum(uint32_t *sums, unsigned int count)
     {
-        int offset = 1;
-        int a;
-        uint32_t temp;
+        unsigned int offset = 1;
 
-        // reduction
-        for (int d = nBits / 2; d; d /= 2)
+        // Up-sweep phase
+        for (int d = count >> 1; d > 0; d >>= 1)
         {
             __syncthreads();
-
             if (threadIdx.x < d)
             {
-                a = (threadIdx.x * 2 + 1) * offset - 1;
-                radixSums[a + offset] += radixSums[a];
+                unsigned int ai = offset * (2 * threadIdx.x + 1) - 1;
+                unsigned int bi = offset * (2 * threadIdx.x + 2) - 1;
+                sums[bi] += sums[ai];
             }
-
             offset *= 2;
         }
 
-        if (!threadIdx.x)
-        {
-            radixSums[nBits - 1] = 0;
-        }
+        // Down-sweep phase
+        if (threadIdx.x == 0)
+            sums[count - 1] = 0;
 
-        // reverse
-        for (int d = 1; d < nBits; d *= 2)
+        for (int d = 1; d < count; d *= 2)
         {
+            offset >>= 1;
             __syncthreads();
-            offset /= 2;
-
             if (threadIdx.x < d)
             {
-                a = (threadIdx.x * 2 + 1) * offset - 1;
-                temp = radixSums[a];
-                radixSums[a] = radixSums[a + offset];
-                radixSums[a + offset] += temp;
+                unsigned int ai = offset * (2 * threadIdx.x + 1) - 1;
+                unsigned int bi = offset * (2 * threadIdx.x + 2) - 1;
+                uint32_t temp = sums[ai];
+                sums[ai] = sums[bi];
+                sums[bi] += temp;
             }
         }
     }
@@ -396,7 +351,7 @@ namespace SpatialHashing
         // 同步线程
         __syncthreads();
 
-        GetPrefixSum(cellData->radixSums, numRadices);
+        ParallelPrefixSum(cellData->radixSums, numRadices);
         __syncthreads();
     }
 
@@ -586,7 +541,7 @@ namespace SpatialHashing
     {
         // 见官网Fig 32-9，Cell ID Array中的每个小球最多会占据8个cell里面，每一个cell有32bit，即info的hash值
         // 1. 首先在 CPU 上分配 CellData 结构体内存
-        CellData hostCellData; // 改为在栈上分配
+        CellData hostCellData;
         CellData *d_cellData;
 
         // 2. 计算所需的内存大小
@@ -626,7 +581,6 @@ namespace SpatialHashing
                                                      blocksNum);
 
         cudaDeviceSynchronize();
-        // printf("indicesSize: %d\n", indicesSize);
 
         // 释放内存
         cudaFree(hostCellData.cells);
@@ -649,7 +603,6 @@ void ProcessCollisions(
     int cellY,
     int cellZ)
 {
-    // return;
     // 计算需要分配的线程块数量
     unsigned int blocksNum = BLOCK_COUNT;
     unsigned int objSize = (ballCount - 1) / THREAD_COUNT + 1;

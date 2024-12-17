@@ -5,6 +5,7 @@
 #include "device_launch_parameters.h"
 #include "ballset.hpp"
 #include "ball.hpp"
+#include "coor.hpp"
 
 namespace CollisionConstants
 {
@@ -35,8 +36,6 @@ namespace SceneConfig
 #define HEIGHT 20.0f
 #define WIDTH 10.0f
 }
-
-
 
 void ProcessCollisions(
     Ball *ballArray,
