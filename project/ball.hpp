@@ -29,7 +29,6 @@ public:
         this->radius = radius;
         this->weight = radius * radius * radius; // *4 / 3 * PI;
         this->shader = shader;
-        // GLfloat *color = GenerateRandomColor();
         for (int i = 0; i < 4; i++)
         {
             this->shader.color[i] = shader.color[i];

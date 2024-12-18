@@ -11,13 +11,39 @@ class ParticleSystem
 {
 private:
     Ball *particles;
-    float spaceX, spaceY, spaceZ; // 场景的x, y, z方向的大小
-    int gridSize;                 // 每个维度上的粒子数量
-    int particleCount;            // 总粒子数量
-    float maxParticleRadius;      // 最大粒子半径
-    float updateInterval;         // 更新时间间隔
-    float cellSize;               // 空间划分单元格大小
-    int cellsX, cellsY, cellsZ;   // 每个维度上的单元格数量
+    float spaceX, spaceY, spaceZ;
+    int particleCount;          // 总粒子数量
+    float maxParticleRadius;    // 最大粒子半径
+    float updateInterval;       // 更新时间间隔
+    float cellSize;             // 空间划分单元格大小
+    int cellsX, cellsY, cellsZ; // 每个维度上的单元格数量
+
+    // 检查新位置是否与现有粒子重叠
+    bool checkOverlap(const Point3D &pos, float radius, int currentIndex) const
+    {
+        for (int i = 0; i < currentIndex; i++)
+        {
+            const Point3D &otherPos = particles[i].position;
+            float minDist = radius + particles[i].radius;
+
+            // 计算两点之间的距离
+            Vector3D diff = pos - otherPos;
+            if (diff.lengthSquared() < minDist * minDist)
+            {
+                return true; // 发生重叠
+            }
+        }
+        return false;
+    }
+
+    // 生成随机位置
+    Point3D generateRandomPosition(float radius) const
+    {
+        float x = ((rand() % 2000) / 1000.0f - 1.0f) * (spaceX - radius);
+        float y = radius + (rand() % 1000) / 1000.0f * (spaceY - 2 * radius);
+        float z = ((rand() % 2000) / 1000.0f - 1.0f) * (spaceZ - radius);
+        return Point3D(x, y, z);
+    }
 
     std::vector<GLfloat> generateRandomColor()
     {
@@ -33,12 +59,12 @@ private:
 
 public:
     ParticleSystem(float spaceX, float spaceY, float spaceZ,
-                   int gridSize, float maxRadius, float updateInterval)
+                   int count, float maxRadius, float updateInterval)
         : spaceX(spaceX), spaceY(spaceY), spaceZ(spaceZ),
-          gridSize(gridSize), maxParticleRadius(maxRadius),
+          particleCount(std::min(count, 200)), // 限制最大数量为200
+          maxParticleRadius(maxRadius),
           updateInterval(updateInterval)
     {
-        particleCount = gridSize * gridSize * gridSize;
         cellSize = maxRadius * 1.5f;
         cellsX = ceil(spaceX * 2 / cellSize);
         cellsY = ceil(spaceY / cellSize);
@@ -51,54 +77,56 @@ public:
         delete[] particles;
     }
 
-    void initialize(float length, float height, float width)
+    void initialize()
     {
-        // 计算粒子之间的间距
-        float spacingX = (2 * (spaceX - maxParticleRadius)) / (gridSize - 1);
-        float spacingY = (spaceY - 2 * maxParticleRadius) / (gridSize - 1);
-        float spacingZ = (2 * (spaceZ - maxParticleRadius)) / (gridSize - 1);
+        const int MAX_ATTEMPTS = 100; // 每个粒子的最大尝试次数
 
-        // 在网格中初始化粒子
-        for (int i = 0; i < gridSize; i++)
+        for (int i = 0; i < particleCount; i++)
         {
-            for (int j = 0; j < gridSize; j++)
+            // 随机半径
+            float radius = maxParticleRadius * (0.5f + (rand() % 51) / 100.0f); // 50%~100%的最大半径
+
+            // 尝试找到一个不重叠的位置
+            Point3D position;
+            bool validPosition = false;
+            int attempts = 0;
+
+            while (!validPosition && attempts < MAX_ATTEMPTS)
             {
-                for (int k = 0; k < gridSize; k++)
+                position = generateRandomPosition(radius);
+                validPosition = !checkOverlap(position, radius, i);
+                attempts++;
+            }
+
+            if (!validPosition)
+            {
+                // 如果无法找到合适位置，减小半径继续尝试
+                radius *= 0.8f;
+                attempts = 0;
+                while (!validPosition && attempts < MAX_ATTEMPTS)
                 {
-                    int index = i * gridSize * gridSize + j * gridSize + k;
-
-                    // Position
-                    float posX = i * spacingX + maxParticleRadius - spaceX;
-                    float posY = k * spacingY + maxParticleRadius;
-                    float posZ = j * spacingZ + maxParticleRadius - spaceZ;
-                    Point3D position(posX, posY, posZ);
-
-                    // 随机初始速度
-                    float velX = ((rand() % 201) / 100.0f - 1.0f) * 10;
-                    float velY = ((rand() % 201) / 100.0f - 1.0f) * 10;
-                    float velZ = ((rand() % 201) / 100.0f - 1.0f) * 10;
-                    Point3D velocity(velX, velY, velZ);
-
-                    // 随机半径
-                    float radius = maxParticleRadius * (rand() % 101 / 100.0f);
-                    if (radius < maxParticleRadius * 0.5f)
-                    {
-                        radius += maxParticleRadius * 0.7f;
-                        radius = std::min(radius, maxParticleRadius);
-                    }
-
-                    // 随机颜色和材质属性
-                    std::vector<GLfloat> randomColor = generateRandomColor();
-                    GLfloat color[4] = {randomColor[0], randomColor[1], randomColor[2], 1.0f};
-                    GLfloat ambient[4] = {color[0] * 0.2f, color[1] * 0.2f, color[2] * 0.2f, 1.0f};
-                    GLfloat diffuse[4] = {color[0], color[1], color[2], 1.0f};
-                    GLfloat specular[4] = {0.5f, 0.5f, 0.5f, 1.0f};
-                    GLfloat shininess = 30.0f;
-
-                    Shader shader(color, ambient, diffuse, specular, shininess);
-                    particles[index].Init(position, velocity, radius, shader);
+                    position = generateRandomPosition(radius);
+                    validPosition = !checkOverlap(position, radius, i);
+                    attempts++;
                 }
             }
+
+            // 随机初始速度
+            float velX = ((rand() % 201) / 100.0f - 1.0f) * 10;
+            float velY = ((rand() % 201) / 100.0f - 1.0f) * 10;
+            float velZ = ((rand() % 201) / 100.0f - 1.0f) * 10;
+            Point3D velocity(velX, velY, velZ);
+
+            // 随机颜色和材质属性
+            std::vector<GLfloat> randomColor = generateRandomColor();
+            GLfloat color[4] = {randomColor[0], randomColor[1], randomColor[2], 1.0f};
+            GLfloat ambient[4] = {color[0] * 0.2f, color[1] * 0.2f, color[2] * 0.2f, 1.0f};
+            GLfloat diffuse[4] = {color[0], color[1], color[2], 1.0f};
+            GLfloat specular[4] = {0.5f, 0.5f, 0.5f, 1.0f};
+            GLfloat shininess = 30.0f;
+
+            Shader shader(color, ambient, diffuse, specular, shininess);
+            particles[i].Init(position, velocity, radius, shader);
         }
     }
 

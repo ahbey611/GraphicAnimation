@@ -15,7 +15,7 @@ class SimulationApp
 private:
 	static Wall boundaries[6];
 	static Light sceneLight;
-	static ParticleSystem particles;
+	static ParticleSystem *particles;
 
 	// 显示
 	static void displayCallback()
@@ -23,8 +23,8 @@ private:
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		setupCamera();
 		renderEnvironment();
-		particles.update();
-		particles.render();
+		particles->update();
+		particles->render();
 		glutSwapBuffers();
 	}
 
@@ -77,7 +77,7 @@ private:
 		glMatrixMode(GL_MODELVIEW);
 	}
 
-	// 计时器
+	// 计��器
 	static void timerCallback(int value)
 	{
 		glutPostRedisplay();
@@ -92,9 +92,9 @@ private:
 			{-LENGTH, 0, -WIDTH}, {-LENGTH, 0, WIDTH}, {LENGTH, 0, -WIDTH}, {LENGTH, 0, WIDTH}, {-LENGTH, HEIGHT, -WIDTH}, {-LENGTH, HEIGHT, WIDTH}, {LENGTH, HEIGHT, -WIDTH}, {LENGTH, HEIGHT, WIDTH}};
 
 		// 创建墙
-		boundaries[0].setGeometry(vertices[0], vertices[1], vertices[3], vertices[2]); // Floor
-		boundaries[1].setGeometry(vertices[0], vertices[1], vertices[5], vertices[4]); // Left wall
-		boundaries[2].setGeometry(vertices[0], vertices[2], vertices[6], vertices[4]); // Back wall
+		boundaries[0].setGeometry(vertices[0], vertices[1], vertices[3], vertices[2]); // 地面
+		boundaries[1].setGeometry(vertices[0], vertices[1], vertices[5], vertices[4]); // 左墙
+		boundaries[2].setGeometry(vertices[0], vertices[2], vertices[6], vertices[4]); // 后墙
 
 		// 设置材质
 		GLfloat floorColor[4] = {1.0f, 1.0f, 1.0f, 1.0f};
@@ -112,15 +112,78 @@ private:
 
 		// 只绘制3面墙壁
 		for (int i = 1; i < 3; i++)
-		{
 			boundaries[i].setMaterial(wallMat);
-		}
 	}
 
 public:
+	// 添加配置结构体
+	struct SimConfig
+	{
+		int ballCount = 125;	// 默认150个球
+		float maxRadius = 1.0f; // 默认最大半径1.0
+	};
+	static SimConfig config;
+
+	// 添加参数解析函数
+	static bool parseArguments(int argc, char *argv[])
+	{
+		for (int i = 1; i < argc; i++)
+		{
+			std::string arg = argv[i];
+
+			if (arg == "--ball" || arg == "-b")
+			{
+				if (i + 1 < argc)
+				{
+					config.ballCount = std::atoi(argv[++i]);
+					if (config.ballCount <= 0 || config.ballCount > 200)
+					{
+						std::cerr << "球的数量必须在1-200之间" << std::endl;
+						return false;
+					}
+				}
+				else
+				{
+					std::cerr << "--ball 参数需要一个数值" << std::endl;
+					return false;
+				}
+			}
+			else if (arg == "--max_radius" || arg == "-r")
+			{
+				if (i + 1 < argc)
+				{
+					config.maxRadius = std::atof(argv[++i]);
+					if (config.maxRadius <= 0.0f || config.maxRadius > 2.0f)
+					{
+						std::cerr << "最大半径必须在0-2之间" << std::endl;
+						return false;
+					}
+				}
+				else
+				{
+					std::cerr << "--max_radius 参数需要一个数值" << std::endl;
+					return false;
+				}
+			}
+			else if (arg == "--help" || arg == "-h")
+			{
+				std::cout << "使用方法: " << argv[0] << " [选项]" << std::endl
+						  << "选项:" << std::endl
+						  << "  -b, --ball <数量>        设置球的数量 (1-200)" << std::endl
+						  << "  -r, --max_radius <半径>  设置最大半径 (0-2)" << std::endl
+						  << "  -h, --help              显示帮助信息" << std::endl;
+				return false;
+			}
+		}
+		return true;
+	}
+
 	// 初始化
 	static bool initialize(int argc, char *argv[])
 	{
+		if (!parseArguments(argc, argv))
+			return false;
+
 		glutInit(&argc, argv);
 		glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
 		glutInitWindowSize(WINDOW_WIDTH, WINDOW_HEIGHT);
@@ -130,9 +193,19 @@ public:
 		if (!initializeGPU())
 			return false;
 
+		// 在参数解析后创建粒子系统
+		particles = new ParticleSystem(LENGTH, HEIGHT, WIDTH,
+									   config.ballCount,
+									   config.maxRadius,
+									   REFRESH_TIME);
+
 		setupGL();
 		initializeWalls();
-		particles.initialize(LENGTH, HEIGHT, WIDTH);
+		particles->initialize();
+
+		std::cout << "场景初始化完成" << std::endl
+				  << "球的数量: " << config.ballCount << std::endl
+				  << "最大半径: " << config.maxRadius << std::endl;
 
 		glutReshapeFunc(reshapeCallback);
 		glutDisplayFunc(displayCallback);
@@ -146,6 +219,12 @@ public:
 		glutMainLoop();
 	}
 
+	// 添加清理函数
+	static void cleanup()
+	{
+		delete particles;
+	}
+
 private:
 	// 初始化GPU
 	static bool initializeGPU()
@@ -156,9 +235,9 @@ private:
 		// 检查GPU是否成功
 		if (cudaGetDeviceProperties(&props, deviceId) == cudaSuccess)
 		{
-			std::cout << "GPU Device: " << props.name << "\n"
-					  << "Compute Units: " << props.multiProcessorCount << "\n"
-					  << "Max Threads per Block: " << props.maxThreadsPerBlock << "\n";
+			std::cout << "GPU 设备: " << props.name << "\n"
+					  << "计算单元: " << props.multiProcessorCount << "\n"
+					  << "最大线程块: " << props.maxThreadsPerBlock << "\n";
 			return true;
 		}
 		return false;
@@ -179,16 +258,18 @@ private:
 
 Wall SimulationApp::boundaries[6];
 Light SimulationApp::sceneLight;
-ParticleSystem SimulationApp::particles(LENGTH, HEIGHT, WIDTH, BALL_COLS, MAX_RADIUS, REFRESH_TIME);
+SimulationApp::SimConfig SimulationApp::config;
+ParticleSystem *SimulationApp::particles = nullptr;
 
 int main(int argc, char *argv[])
 {
 	if (!SimulationApp::initialize(argc, argv))
 	{
-		std::cerr << "Failed to initialize application\n";
 		return -1;
 	}
 
 	SimulationApp::run();
+
+	SimulationApp::cleanup();
 	return 0;
 }
