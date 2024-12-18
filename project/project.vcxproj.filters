@@ -47,6 +47,9 @@
     <ClInclude Include="ballset.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="particle_system.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <CudaCompile Include="collusion.cu">

@@ -1,61 +1,62 @@
 #pragma once
+#include <cmath>
 
-#include <math.h>
-
-using namespace std;
-
-#define PI 3.14159265358979323846
-
-// 3维坐标
-class Coor
+// 3D向量
+class Vector3D
 {
 public:
     float x, y, z;
 
-    Coor()
+    Vector3D() : x(0), y(0), z(0) {}
+    Vector3D(float x_, float y_, float z_) : x(x_), y(y_), z(z_) {}
+
+    Vector3D operator+(const Vector3D &v) const
     {
-        x = 0;
-        y = 0;
-        z = 0;
-    };
-    Coor(float x, float y, float z) : x(x), y(y), z(z) {
-                                      };
-    Coor(const Coor &coor) : x(coor.x), y(coor.y), z(coor.z) {
-                             };
-    ~Coor() {};
-    void setCoor(float x, float y, float z)
-    {
-        this->x = x;
-        this->y = y;
-        this->z = z;
+        return Vector3D(x + v.x, y + v.y, z + v.z);
     }
-    Coor operator+(const Coor &coor)
+
+    Vector3D operator-(const Vector3D &v) const
     {
-        return Coor(this->x + coor.x, this->y + coor.y, this->z + coor.z);
+        return Vector3D(x - v.x, y - v.y, z - v.z);
     }
-    Coor operator-(const Coor &coor)
+
+    Vector3D operator*(float scalar) const
     {
-        return Coor(this->x - coor.x, this->y - coor.y, this->z - coor.z);
+        return Vector3D(x * scalar, y * scalar, z * scalar);
     }
-    Coor operator*(const float &num)
+
+    float dot(const Vector3D &v) const
     {
-        return Coor(this->x * num, this->y * num, this->z * num);
+        return x * v.x + y * v.y + z * v.z;
     }
-    Coor operator/(const float &num)
+
+    Vector3D cross(const Vector3D &v) const
     {
-        return Coor(this->x / num, this->y / num, this->z / num);
+        return Vector3D(
+            y * v.z - z * v.y,
+            z * v.x - x * v.z,
+            x * v.y - y * v.x);
     }
-    float operator*(const Coor &coor)
+
+    float length() const
     {
-        return this->x * coor.x + this->y * coor.y + this->z * coor.z;
+        return std::sqrt(lengthSquared());
     }
-    float distance()
+
+    float lengthSquared() const
     {
-        return sqrt(this->x * this->x + this->y * this->y + this->z * this->z);
+        return x * x + y * y + z * z;
     }
-    // 平方和
-    float squareSum()
+
+    Vector3D normalized() const
     {
-        return this->x * this->x + this->y * this->y + this->z * this->z;
+        float len = length();
+        if (len > 0)
+        {
+            return *this * (1.0f / len);
+        }
+        return *this;
     }
 };
+
+using Point3D = Vector3D;

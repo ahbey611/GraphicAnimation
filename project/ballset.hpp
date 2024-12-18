@@ -43,27 +43,17 @@ public:
     vector<GLfloat> GenerateRandomColor()
     {
         vector<GLfloat> color;
-        // for (int i = 0; i < 3; i++)
-        // {
         GLfloat r = rand() % 256 / 255.0;
         GLfloat g = rand() % 256 / 255.0;
         GLfloat b = rand() % 256 / 255.0;
         color.push_back(r);
         color.push_back(g);
         color.push_back(b);
-        // }
         return color;
     }
 
     void initBalls()
     {
-
-        // GLfloat color[4] = {0.5, 0.5, 0.5, 1.0};
-        // GLfloat ambient[4] = {0.2, 0.4, 0.7, 1.0};
-        // GLfloat diffuse[4] = {0.5, 0.5, 0.5, 1.0};
-        // GLfloat specular[4] = {0.5, 0.5, 0.5, 1.0};
-        // GLfloat ambient[4] = {0.1, 0.6, 0.3, 1.0};
-        // GLfloat diffuse[4] = {0.5, 0.5, 0.5, 1.0};
 
         // 计算每个球之间的距离
         float diffX = (2 * (rangeX - maxRadius)) / (col - 1);
@@ -81,12 +71,12 @@ public:
                     float posX = i * diffX + maxRadius - rangeX;
                     float posY = k * diffY + maxRadius;
                     float posZ = j * diffZ + maxRadius - rangeZ;
-                    Coor position(posX, posY, posZ);
+                    Vector3D position(posX, posY, posZ);
 
                     float speedX = ((rand() % 201) / 100.0f - 1.0f) * 10;
                     float speedY = ((rand() % 201) / 100.0f - 1.0f) * 10;
                     float speedZ = ((rand() % 201) / 100.0f - 1.0f) * 10;
-                    Coor speed(speedX, speedY, speedZ);
+                    Vector3D speed(speedX, speedY, speedZ);
 
                     float radius = maxRadius * (rand() % 101 / 100.0f);
                     // 避免球半径过小

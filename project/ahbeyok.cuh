@@ -1,6 +1,6 @@
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
-#include "ballset.hpp"
+// #include "ballset.hpp"
 #include "ball.hpp"
 
 #define HOME_CELL 0x00

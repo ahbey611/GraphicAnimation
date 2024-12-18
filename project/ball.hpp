@@ -13,8 +13,8 @@ using namespace std;
 class Ball
 {
 public:
-    Coor position;
-    Coor speed;
+    Point3D position;
+    Point3D speed;
     GLfloat radius;
     GLfloat weight;
     Shader shader;
@@ -22,7 +22,7 @@ public:
     Ball() {}
     ~Ball() {}
 
-    void Init(Coor position, Coor speed, GLfloat radius, Shader shader)
+    void Init(Point3D position, Point3D speed, GLfloat radius, Shader shader)
     {
         this->position = position;
         this->speed = speed;

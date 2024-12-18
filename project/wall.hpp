@@ -7,61 +7,79 @@
 
 using namespace std;
 
-class Wall
+struct Material
 {
-public:
-    Coor vertexes[4];
-    Coor normal;
-    Shader shader;
+    GLfloat color[4];
+    GLfloat ambient[4];
+    GLfloat diffuse[4];
+    GLfloat specular[4];
+    GLfloat shininess;
 
-    Wall()
+    Material() : shininess(20.0f)
     {
         for (int i = 0; i < 4; i++)
         {
-            vertexes[i] = Coor();
+            color[i] = 1.0f;
+            ambient[i] = 0.2f;
+            diffuse[i] = 0.8f;
+            specular[i] = 0.5f;
         }
-        // normal = Coor();
-        // shader = Shader();
     }
 
-    void setVertexes(Coor v1, Coor v2, Coor v3, Coor v4)
+    Material(const GLfloat *c, const GLfloat *a,
+             const GLfloat *d, const GLfloat *s,
+             GLfloat sh) : shininess(sh)
     {
-        vertexes[0] = v1;
-        vertexes[1] = v2;
-        vertexes[2] = v3;
-        vertexes[3] = v4;
-        getNormal();
-    }
-
-    void getNormal()
-    {
-
-        Coor v1 = vertexes[0];
-        Coor v2 = vertexes[1];
-        Coor v3 = vertexes[2];
-
-        float na = (v2.y - v1.y) * (v3.z - v1.z) - (v2.z - v1.z) * (v3.y - v1.y);
-        float nb = (v2.z - v1.z) * (v3.x - v1.x) - (v2.x - v1.x) * (v3.z - v1.z);
-        float nc = (v2.x - v1.x) * (v3.y - v1.y) - (v2.y - v1.y) * (v3.x - v1.x);
-        float norm = sqrt(na * na + nb * nb + nc * nc);
-        na /= norm;
-        nb /= norm;
-        nc /= norm;
-        if (na * v1.x + nb * v1.y + nc * v1.z < 0)
+        for (int i = 0; i < 4; i++)
         {
-            na = -na;
-            nb = -nb;
-            nc = -nc;
+            color[i] = c[i];
+            ambient[i] = a[i];
+            diffuse[i] = d[i];
+            specular[i] = s[i];
         }
-        normal.setCoor(na, nb, nc);
+    }
+};
+
+class Wall
+{
+public:
+    Vector3D vertices[4];
+    Vector3D normal;
+    Material material;
+
+    Wall() {}
+
+    void setGeometry(const Vector3D &v1, const Vector3D &v2,
+                     const Vector3D &v3, const Vector3D &v4)
+    {
+        vertices[0] = v1;
+        vertices[1] = v2;
+        vertices[2] = v3;
+        vertices[3] = v4;
+        calculateNormal();
     }
 
-    float getDistance(Coor point)
+    void setMaterial(const Material &mat)
     {
-        getNormal();
-        float distance = abs(normal.x * point.x + normal.y * point.y + normal.z * point.z);
-        float norm = sqrt(normal.squareSum());
-        distance /= norm;
-        return distance;
+        material = mat;
+    }
+
+    float distanceToPoint(const Vector3D &point) const
+    {
+        return std::abs(normal.dot(point)) / normal.length();
+    }
+
+private:
+    void calculateNormal()
+    {
+        Vector3D edge1 = vertices[1] - vertices[0];
+        Vector3D edge2 = vertices[2] - vertices[0];
+        normal = edge1.cross(edge2).normalized();
+
+        // Ensure normal points inward
+        if (normal.dot(vertices[0]) < 0)
+        {
+            normal = normal * -1.0f;
+        }
     }
 };

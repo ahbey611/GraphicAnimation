@@ -3,7 +3,7 @@
 
 #include "cuda_runtime.h"
 #include "device_launch_parameters.h"
-#include "ballset.hpp"
+// #include "ballset.hpp"
 #include "ball.hpp"
 #include "coor.hpp"
 

@@ -193,7 +193,7 @@ namespace SpatialHashing
     };
 
     // 用于计算网格索引
-    __device__ void calculateGridIndex(const Coor &position, float cellSize,
+    __device__ void calculateGridIndex(const Point3D &position, float cellSize,
                                        int &gridX, int &gridY, int &gridZ)
     {
         gridX = (int)((position.x + LENGTH) / cellSize);
