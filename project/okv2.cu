@@ -9,12 +9,6 @@ struct INTVector3D
     int x, y, z;
 };
 
-struct CellSizeInfo
-{
-    INTVector3D cell;
-    int cellSize;
-};
-
 // 向量运算工具
 namespace VectorMath
 {
@@ -185,7 +179,7 @@ namespace SpatialHashing
     };
 
     // 用于计算网格索引
-    __device__ void calculateGridIndex(const Vector3D &position, float cellSize,
+    __device__ void calculateGridIndex(const Point3D &position, float cellSize,
                                        int &gridX, int &gridY, int &gridZ)
     {
         gridX = (int)((position.x + LENGTH) / cellSize);
@@ -193,7 +187,7 @@ namespace SpatialHashing
         gridZ = (int)((position.z + WIDTH) / cellSize);
     }
 
-    __device__ void calculateGridIndex2(const Vector3D &position, float cellSize,
+    __device__ void calculateGridIndex2(const Point3D &position, float cellSize,
                                         INTVector3D &grid)
     {
         grid.x = (int)((position.x + LENGTH) / cellSize);
@@ -202,10 +196,9 @@ namespace SpatialHashing
     }
 
     // 用于计算cell信息
-
-    __device__ uint32_t calculateCellInfo(INTVector3D &grid, bool isHome)
+    __device__ uint32_t calculateCellInfo(int x, int y, int z, bool isHome)
     {
-        return (uint32_t)(grid.x << 17 | grid.y << 9 | grid.z << 1 | (isHome ? HOME_CELL : PHANTOM_CELL));
+        return (uint32_t)(x << 17 | y << 9 | z << 1 | (isHome ? HOME_CELL : PHANTOM_CELL));
     }
 
     // 计算相邻单元格的偏移量
@@ -238,21 +231,74 @@ namespace SpatialHashing
                z >= 0 && z < cellZ;
     }
 
-    // 当phantom cell数量小于8时，补齐empty cell
-    __device__ int fillEmptyCell(CellData *cellData, int cellOffset, int phantomCount)
+    // 初始化
+    __global__ void InitCells2(CellData *cellData, Ball *balls,
+                               float cellSize, int cellX, int cellY, int cellZ, int N)
     {
-        for (int i = phantomCount; i < 8; i++)
+        int index = blockIdx.x * blockDim.x + threadIdx.x;
+        int stride = blockDim.x * gridDim.x;
+
+        // 预计算相邻单元格的偏移量
+        __shared__ int neighborOffsets[78]; // 26个相邻单元格 * 3个坐标
+        int offsetCount;
+        if (threadIdx.x == 0)
         {
-            cellData->cells[cellOffset] = EMPTY_CELL;
-            cellData->objects[cellOffset] = i << 1;
-            cellOffset++;
-            phantomCount++;
+            getNeighborOffsets(neighborOffsets, offsetCount);
         }
-        return cellOffset;
+        __syncthreads();
+
+        for (int i = index; i < N; i += stride)
+        {
+            Ball &ball = balls[i];
+            int baseOffset = i * 8;
+            int currentOffset = baseOffset;
+
+            // 计算home cell位置
+            int homeX, homeY, homeZ;
+            calculateGridIndex(ball.position, cellSize, homeX, homeY, homeZ);
+
+            // 设置home cell
+            cellData->cells[currentOffset] = calculateCellInfo(homeX, homeY, homeZ, true);
+            cellData->objects[currentOffset] = i << 1 | HOME_OBJECT;
+            currentOffset++;
+
+            // 使用预计算的偏移量检查相邻单元格
+            for (int j = 0; j < offsetCount && currentOffset < baseOffset + 8; j++)
+            {
+                int newX = homeX + neighborOffsets[j * 3];
+                int newY = homeY + neighborOffsets[j * 3 + 1];
+                int newZ = homeZ + neighborOffsets[j * 3 + 2];
+
+                if (!isValidCell(newX, newY, newZ, cellX, cellY, cellZ))
+                    continue;
+
+                // 计算单元格中心位置
+                Point3D cellCenter(
+                    (newX * cellSize) - LENGTH,
+                    newY * cellSize,
+                    (newZ * cellSize) - WIDTH);
+
+                // 检查球是否与该单元格相交
+                Point3D relativePos = cellCenter - ball.position;
+                if (relativePos.length() < ball.radius)
+                {
+                    cellData->cells[currentOffset] = calculateCellInfo(newX, newY, newZ, false);
+                    cellData->objects[currentOffset] = i << 1 | PHANTOM_OBJECT;
+                    currentOffset++;
+                }
+            }
+
+            // 填充剩余的slots
+            while (currentOffset < baseOffset + 8)
+            {
+                cellData->cells[currentOffset] = EMPTY_CELL;
+                cellData->objects[currentOffset] = i << 1;
+                currentOffset++;
+            }
+        }
     }
 
-    // 判断home cell近邻的格子是否是phantom cell
-    __device__ int handlePhantomCell(CellData *cellData, Ball &ball, float cellSize, int cellX, int cellY, int cellZ, int N, INTVector3D &home, int i, int cellOffset)
+    __device__ int handlePhantomCell(CellData *cellData, Ball &ball, float cellSize, int cellX, int cellY, int cellZ, int N, int homeX, int homeY, int homeZ, int i, int cellOffset)
     {
         int phantomCount = 1;
 
@@ -265,19 +311,21 @@ namespace SpatialHashing
                     if (!(x | y | z))
                         continue;
 
-                    INTVector3D newGrid = {home.x + x, home.y + y, home.z + z};
+                    int newX = homeX + x;
+                    int newY = homeY + y;
+                    int newZ = homeZ + z;
 
                     // 检查边界
-                    if (newGrid.x < 0 || newGrid.x >= cellX ||
-                        newGrid.y < 0 || newGrid.y >= cellY ||
-                        newGrid.z < 0 || newGrid.z >= cellZ)
+                    if (newX < 0 || newX >= cellX ||
+                        newY < 0 || newY >= cellY ||
+                        newZ < 0 || newZ >= cellZ)
                         continue;
 
                     // 计算到相邻网格的距离
                     Vector3D gridCenter = {
-                        (newGrid.x * cellSize) - LENGTH,
-                        newGrid.y * cellSize,
-                        (newGrid.z * cellSize) - WIDTH};
+                        (newX * cellSize) - LENGTH,
+                        newY * cellSize,
+                        (newZ * cellSize) - WIDTH};
 
                     Vector3D relativePos = {
                         gridCenter.x - ball.position.x,
@@ -286,7 +334,7 @@ namespace SpatialHashing
 
                     if (VectorMath::magnitude(relativePos.x, relativePos.y, relativePos.z) < ball.radius)
                     {
-                        cellData->cells[cellOffset] = calculateCellInfo(newGrid, false);
+                        cellData->cells[cellOffset] = calculateCellInfo(newX, newY, newZ, false);
                         cellData->objects[cellOffset] = i << 1 | PHANTOM_OBJECT;
                         cellOffset++;
                         phantomCount++;
@@ -295,13 +343,46 @@ namespace SpatialHashing
             }
         }
 
-        // 填充剩余的cell
-        cellOffset = fillEmptyCell(cellData, cellOffset, phantomCount);
+        // 填充剩余的slots
+        while (phantomCount < 8)
+        {
+            cellData->cells[cellOffset] = EMPTY_CELL;
+            cellData->objects[cellOffset] = i << 1;
+            cellOffset++;
+            phantomCount++;
+        }
 
         return cellOffset;
     }
 
-    // 初始化
+    __global__ void InitCells3(CellData *cellData, Ball *balls, float cellSize, int cellX, int cellY, int cellZ, int N)
+    {
+        unsigned int count = 0;
+        int index = blockIdx.x * blockDim.x + threadIdx.x;
+        int stride = blockDim.x * gridDim.x;
+
+        // 这里是使用GPU进行计算的，因此需要使用GPU的线程来计算，一个线程计算一个球
+        for (int i = index; i < N; i += stride)
+        {
+            int cellOffset = i * 8;
+            Ball &ball = balls[i];
+
+            // 计算home cell位置
+            int homeX, homeY, homeZ;
+            calculateGridIndex(ball.position, cellSize, homeX, homeY, homeZ);
+
+            // 设置home cell
+            cellData->cells[cellOffset] = calculateCellInfo(homeX, homeY, homeZ, true);
+            cellData->objects[cellOffset] = i << 1 | HOME_OBJECT;
+
+            // 处理phantom cells
+            cellOffset++;
+
+            // 遍历相邻网格
+            cellOffset = handlePhantomCell(cellData, ball, cellSize, cellX, cellY, cellZ, N, homeX, homeY, homeZ, i, cellOffset);
+        }
+    }
+
     __global__ void InitCells(CellData *cellData, Ball *balls, float cellSize, int cellX, int cellY, int cellZ, int N)
     {
         unsigned int count = 0;
@@ -315,18 +396,67 @@ namespace SpatialHashing
             Ball &ball = balls[i];
 
             // 计算home cell位置
-            INTVector3D home;
-            calculateGridIndex2(ball.position, cellSize, home);
+            int homeX, homeY, homeZ;
+            calculateGridIndex(ball.position, cellSize, homeX, homeY, homeZ);
 
             // 设置home cell
-            cellData->cells[cellOffset] = calculateCellInfo(home, true);
+            cellData->cells[cellOffset] = calculateCellInfo(homeX, homeY, homeZ, true);
             cellData->objects[cellOffset] = i << 1 | HOME_OBJECT;
 
             // 处理phantom cells
+            int phantomCount = 1;
             cellOffset++;
 
             // 遍历相邻网格
-            cellOffset = handlePhantomCell(cellData, ball, cellSize, cellX, cellY, cellZ, N, home, i, cellOffset);
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                for (int dy = -1; dy <= 1; dy++)
+                {
+                    for (int dz = -1; dz <= 1; dz++)
+                    {
+                        if (!(dx | dy | dz))
+                            continue; // 跳过home cell
+
+                        int newX = homeX + dx;
+                        int newY = homeY + dy;
+                        int newZ = homeZ + dz;
+
+                        // 检查边界
+                        if (newX < 0 || newX >= cellX ||
+                            newY < 0 || newY >= cellY ||
+                            newZ < 0 || newZ >= cellZ)
+                            continue;
+
+                        // 计算到相邻网格的距离
+                        Vector3D gridCenter = {
+                            (newX * cellSize) - LENGTH,
+                            newY * cellSize,
+                            (newZ * cellSize) - WIDTH};
+
+                        Vector3D relativePos = {
+                            gridCenter.x - ball.position.x,
+                            gridCenter.y - ball.position.y,
+                            gridCenter.z - ball.position.z};
+
+                        if (VectorMath::magnitude(relativePos.x, relativePos.y, relativePos.z) < ball.radius)
+                        {
+                            cellData->cells[cellOffset] = calculateCellInfo(newX, newY, newZ, false);
+                            cellData->objects[cellOffset] = i << 1 | PHANTOM_OBJECT;
+                            cellOffset++;
+                            phantomCount++;
+                        }
+                    }
+                }
+            }
+
+            // 填充剩余的slots
+            while (phantomCount < 8)
+            {
+                cellData->cells[cellOffset] = EMPTY_CELL;
+                cellData->objects[cellOffset] = i << 1;
+                cellOffset++;
+                phantomCount++;
+            }
         }
     }
 
@@ -596,7 +726,7 @@ namespace SpatialHashing
         // printf("d_cellData\n");
 
         // 初始化
-        InitCells<<<blocksNum, THREAD_COUNT, THREAD_COUNT * sizeof(unsigned int)>>>(d_cellData, balls, cellSize, cellX, cellY, cellZ, N);
+        InitCells3<<<blocksNum, THREAD_COUNT, THREAD_COUNT * sizeof(unsigned int)>>>(d_cellData, balls, cellSize, cellX, cellY, cellZ, N);
         cudaDeviceSynchronize();
 
         // Radix Sort

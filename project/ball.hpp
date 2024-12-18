@@ -30,9 +30,7 @@ public:
         this->weight = radius * radius * radius; // *4 / 3 * PI;
         this->shader = shader;
         for (int i = 0; i < 4; i++)
-        {
             this->shader.color[i] = shader.color[i];
-        }
     }
 
     void Render()
@@ -47,14 +45,5 @@ public:
         glTranslatef(position.x, position.y, position.z);
         glutSolidSphere(radius, BALL_SLICE, BALL_SLICE);
         glPopMatrix();
-    }
-
-    GLfloat *GenerateRandomColor()
-    {
-        GLfloat r = rand() % 256 / 255.0;
-        GLfloat g = rand() % 256 / 255.0;
-        GLfloat b = rand() % 256 / 255.0;
-        GLfloat color[4] = {r, g, b, 1.0};
-        return color;
     }
 };

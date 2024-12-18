@@ -7,30 +7,31 @@ class Vector3D
 public:
     float x, y, z;
 
-    Vector3D() : x(0), y(0), z(0) {}
-    Vector3D(float x_, float y_, float z_) : x(x_), y(y_), z(z_) {}
+    // 添加 CUDA 设备支持
+    __host__ __device__ Vector3D() : x(0), y(0), z(0) {}
+    __host__ __device__ Vector3D(float x_, float y_, float z_) : x(x_), y(y_), z(z_) {}
 
-    Vector3D operator+(const Vector3D &v) const
+    __host__ __device__ Vector3D operator+(const Vector3D &v) const
     {
         return Vector3D(x + v.x, y + v.y, z + v.z);
     }
 
-    Vector3D operator-(const Vector3D &v) const
+    __host__ __device__ Vector3D operator-(const Vector3D &v) const
     {
         return Vector3D(x - v.x, y - v.y, z - v.z);
     }
 
-    Vector3D operator*(float scalar) const
+    __host__ __device__ Vector3D operator*(float scalar) const
     {
         return Vector3D(x * scalar, y * scalar, z * scalar);
     }
 
-    float dot(const Vector3D &v) const
+    __host__ __device__ float dot(const Vector3D &v) const
     {
         return x * v.x + y * v.y + z * v.z;
     }
 
-    Vector3D cross(const Vector3D &v) const
+    __host__ __device__ Vector3D cross(const Vector3D &v) const
     {
         return Vector3D(
             y * v.z - z * v.y,
@@ -38,17 +39,17 @@ public:
             x * v.y - y * v.x);
     }
 
-    float length() const
+    __host__ __device__ float length() const
     {
         return std::sqrt(lengthSquared());
     }
 
-    float lengthSquared() const
+    __host__ __device__ float lengthSquared() const
     {
         return x * x + y * y + z * z;
     }
 
-    Vector3D normalized() const
+    __host__ __device__ Vector3D normalized() const
     {
         float len = length();
         if (len > 0)
