@@ -70,6 +70,10 @@ public:
         cellsY = ceil(spaceY / cellSize);
         cellsZ = ceil(spaceZ * 2 / cellSize);
         particles = new Ball[particleCount];
+        cout << "cellSize: " << cellSize << endl;
+        cout << "cellX: " << cellsX << endl;
+        cout << "cellY: " << cellsY << endl;
+        cout << "cellZ: " << cellsZ << endl;
     }
 
     ~ParticleSystem()

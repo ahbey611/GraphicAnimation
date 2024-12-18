@@ -38,6 +38,11 @@ public:
         this->cellZ = ceil(rangeZ * 2 / cellSize);
         this->N = cols * cols * cols;
         this->balls = new Ball[N];
+
+        cout << "cellSize: " << cellSize << endl;
+        cout << "cellX: " << cellX << endl;
+        cout << "cellY: " << cellY << endl;
+        cout << "cellZ: " << cellZ << endl;
     }
 
     vector<GLfloat> GenerateRandomColor()

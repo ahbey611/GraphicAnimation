@@ -307,6 +307,7 @@ namespace SpatialHashing
     // 初始化
     __global__ void InitCells(CellData *cellData, Ball *balls, CellSizeInfo cellSizeInfo, int N)
     {
+        unsigned int count = 0;
         int index = blockIdx.x * blockDim.x + threadIdx.x;
         int stride = blockDim.x * gridDim.x;
 
