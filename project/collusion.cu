@@ -186,15 +186,7 @@ namespace SpatialHashing
 
     // 用于计算网格索引
     __device__ void calculateGridIndex(const Vector3D &position, float cellSize,
-                                       int &gridX, int &gridY, int &gridZ)
-    {
-        gridX = (int)((position.x + LENGTH) / cellSize);
-        gridY = (int)(position.y / cellSize);
-        gridZ = (int)((position.z + WIDTH) / cellSize);
-    }
-
-    __device__ void calculateGridIndex2(const Vector3D &position, float cellSize,
-                                        INTVector3D &grid)
+                                       INTVector3D &grid)
     {
         grid.x = (int)((position.x + LENGTH) / cellSize);
         grid.y = (int)(position.y / cellSize);
@@ -202,32 +194,9 @@ namespace SpatialHashing
     }
 
     // 用于计算cell信息
-
     __device__ uint32_t calculateCellInfo(INTVector3D &grid, bool isHome)
     {
         return (uint32_t)(grid.x << 17 | grid.y << 9 | grid.z << 1 | (isHome ? HOME_CELL : PHANTOM_CELL));
-    }
-
-    // 计算相邻单元格的偏移量
-    __device__ void getNeighborOffsets(int *offsets, int &count)
-    {
-        // 预计算26个相邻单元格的偏移量（不包括自身）
-        count = 0;
-        for (int x = -1; x <= 1; x++)
-        {
-            for (int y = -1; y <= 1; y++)
-            {
-                for (int z = -1; z <= 1; z++)
-                {
-                    if (x == 0 && y == 0 && z == 0)
-                        continue;
-                    offsets[count * 3] = x;
-                    offsets[count * 3 + 1] = y;
-                    offsets[count * 3 + 2] = z;
-                    count++;
-                }
-            }
-        }
     }
 
     // 检查单元格是否在边界内
@@ -268,11 +237,6 @@ namespace SpatialHashing
                     INTVector3D newGrid = {home.x + x, home.y + y, home.z + z};
 
                     // 检查边界
-                    // if (newGrid.x < 0 || newGrid.x >= cellSizeInfo.cell.x ||
-                    //     newGrid.y < 0 || newGrid.y >= cellSizeInfo.cell.y ||
-                    //     newGrid.z < 0 || newGrid.z >= cellSizeInfo.cell.z)
-                    //     continue;
-
                     if (!isValidCell(newGrid, cellSizeInfo))
                         continue;
 
@@ -318,7 +282,7 @@ namespace SpatialHashing
 
             // 计算home cell位置
             INTVector3D home;
-            calculateGridIndex2(ball.position, cellSizeInfo.size, home);
+            calculateGridIndex(ball.position, cellSizeInfo.size, home);
 
             // 设置home cell
             cellData->cells[cellOffset] = calculateCellInfo(home, true);
@@ -435,14 +399,14 @@ namespace SpatialHashing
 
         cellData->indexCount[0] = 0;
 
-        uint32_t mask = (1 << 24) - 1; // 为什么是1<<24？ 因为cell的hash值是24位，最高的8位是不用的
-        uint32_t prev = EMPTY_CELL;    // 空cell
+        const uint32_t CELL_MASK = (1 << 24) - 1;
+        uint32_t prev = EMPTY_CELL;
         uint32_t curr = EMPTY_CELL;
 
         for (int i = 0; i < N; i++)
         {
             // 获取cell的hash值，最低的一位是 HOME_CELL 或 PHANTOM_CELL 标志位
-            curr = (cellData->cells[i] >> 1) & mask;
+            curr = (cellData->cells[i] >> 1) & CELL_MASK;
 
             // 如果prev为EMPTY_CELL，则说明是第一个元素
             if (prev == EMPTY_CELL)
@@ -451,38 +415,38 @@ namespace SpatialHashing
             // 如果curr与prev不相等，则说明是新的cell
             if (curr != prev)
             { // 记录下标
-                cellData->indices[cellData->indexCount[0]] = i;
-                cellData->indexCount[0]++;
+                cellData->indices[cellData->indexCount[0]++] = i;
             }
 
             // 更新prev
             prev = curr;
         }
-        cellData->indices[cellData->indexCount[0]] = N;
-        cellData->indexCount[0]++;
-
-        return;
+        cellData->indices[cellData->indexCount[0]++] = N;
     }
 
     void RadixSortCells(CellData *cellData, int N,
                         unsigned int blocksNum)
-
     {
+
+        // radix sort 的位数
+        const int TOTAL_BITS = 32;
+        // radix sort 的pass数，按每 SORT_BITS_PER_PASS 位进行一次排序
+        const int TOTAL_PASSES = TOTAL_BITS / SORT_BITS_PER_PASS;
+
         CellData hostCellData;
 
         // 每次迭代前，先把当前的 GPU 数据结构复制到 CPU
         cudaMemcpy(&hostCellData, cellData, sizeof(CellData), cudaMemcpyDeviceToHost);
 
-        for (int i = 0; i < 32; i += SORT_BITS_PER_PASS)
+        for (int pass = 0; pass < TOTAL_PASSES; pass++)
         {
-            GetRedixSum<<<blocksNum, THREAD_COUNT>>>(cellData, N, i);
-            RearrangeCells<<<blocksNum, THREAD_COUNT>>>(cellData, N, i);
-            uint32_t *temp = hostCellData.cells;
-            hostCellData.cells = hostCellData.tempCells;
-            hostCellData.tempCells = temp;
-            temp = hostCellData.objects;
-            hostCellData.objects = hostCellData.tempObjects;
-            hostCellData.tempObjects = temp;
+            int bitShift = pass * SORT_BITS_PER_PASS;
+
+            GetRedixSum<<<blocksNum, THREAD_COUNT>>>(cellData, N, bitShift);
+            RearrangeCells<<<blocksNum, THREAD_COUNT>>>(cellData, N, bitShift);
+
+            std::swap(hostCellData.cells, hostCellData.tempCells);
+            std::swap(hostCellData.objects, hostCellData.tempObjects);
 
             // 将更新后的结构体复制回 GPU
             cudaMemcpy(cellData, &hostCellData, sizeof(CellData), cudaMemcpyHostToDevice);
@@ -495,75 +459,67 @@ namespace SpatialHashing
                                     CellSizeInfo cellSizeInfo,
                                     unsigned int blocksNum)
     {
-        unsigned int TOTAL_THREADS = blocksNum * THREAD_COUNT;
-        unsigned int GROUP_PER_THREAD = indicesSize / TOTAL_THREADS + 1;
+        const unsigned int TOTAL_THREADS = blocksNum * THREAD_COUNT;
+        const unsigned int GROUP_PER_THREAD = indicesSize / TOTAL_THREADS + 1;
 
         // 获取当前线程的index
         int index = blockIdx.x * blockDim.x + threadIdx.x;
 
-        for (int group = 0; group < GROUP_PER_THREAD; group++)
+        for (unsigned int g = 0; g < GROUP_PER_THREAD; g++)
         {
-            int cellIndex = index * GROUP_PER_THREAD + group;
+            int cellIndex = index * GROUP_PER_THREAD + g;
             // 如果index大于indicesSize，则说明已经处理完了
             if (cellIndex >= indicesSize)
                 break;
 
-            int start = 0;
-            int end = cellData->indices[cellIndex];
+            int groupStart = (cellIndex == 0) ? 0 : cellData->indices[cellIndex - 1];
+            int groupEnd = cellData->indices[cellIndex];
 
-            if (cellIndex == 0)
-                start = 0;
-            else
-                start = cellData->indices[cellIndex - 1];
+            // 连续的home cell的个数
+            int homeCellCount = 0;
 
-            int homeCellNum = 0; // 连续的home cell的个数
-            for (int i = start; i < end; i++)
+            // 遍历groupStart到groupEnd，统计连续的home cell的个数
+            while (homeCellCount < (groupEnd - groupStart) &&
+                   (cellData->cells[groupStart + homeCellCount] & 1) == HOME_CELL)
             {
-                // 最低位是1，表示是home cell
-                int type = cellData->cells[i] & 1;
-                if (type == HOME_CELL)
-                    homeCellNum++;
-                else
-                    break;
+                homeCellCount++;
             }
 
-            for (int i = start; i < start + homeCellNum; i++)
+            for (int i = groupStart; i < groupStart + homeCellCount; i++)
             {
                 if (cellData->cells[i] == EMPTY_CELL)
                     break;
 
-                // int objectIndex1 = objects[i];
-                int ballIndex1 = (cellData->objects[i] >> 1) & 65535;
+                const int ball1Index = (cellData->objects[i] >> 1) & 0xFFFF;
 
-                for (int j = i + 1; j < end; j++)
+                for (int j = i + 1; j < groupEnd; j++)
                 {
                     if (cellData->cells[j] == EMPTY_CELL)
                         break;
 
-                    // int objectIndex2 = objects[j];
-                    int ballIndex2 = (cellData->objects[j] >> 1) & 65535;
+                    const int ball2Index = (cellData->objects[j] >> 1) & 0xFFFF;
 
                     // 两个球在同一个home cell里面，则需要处理碰撞
-                    if (j < start + homeCellNum)
+                    if ((j < groupStart + homeCellCount))
                     {
                         // 如果两个球发生碰撞，则更新速度
-                        if (CollisionPhysics::checkBallCollision(balls[ballIndex1], balls[ballIndex2]))
-                            CollisionPhysics::resolveBallCollision(balls[ballIndex1], balls[ballIndex2]);
+                        if (CollisionPhysics::checkBallCollision(balls[ball1Index], balls[ball2Index]))
+                            CollisionPhysics::resolveBallCollision(balls[ball1Index], balls[ball2Index]);
                     }
                     else
                     {
-                        int homeIndexI = (cellData->cells[i] >> 1) & ((1 << 24) - 1);
                         int cellSize = (int)cellSizeInfo.size;
-                        int jX = (balls[ballIndex2].position.x + LENGTH) / cellSize;
-                        int jY = (balls[ballIndex2].position.y) / cellSize;
-                        int jZ = (balls[ballIndex2].position.z + WIDTH) / cellSize;
-                        int homeIndexJ = jX << 16 | jY << 8 | jZ;
+                        INTVector3D homeIndex2 = {
+                            (balls[ball2Index].position.x + LENGTH) / cellSize,
+                            balls[ball2Index].position.y / cellSize,
+                            (balls[ball2Index].position.z + WIDTH) / cellSize};
 
-                        if (homeIndexI < homeIndexJ)
-                        {
-                            if (CollisionPhysics::checkBallCollision(balls[ballIndex1], balls[ballIndex2]))
-                                CollisionPhysics::resolveBallCollision(balls[ballIndex1], balls[ballIndex2]);
-                        }
+                        const uint32_t homeCell2 = (homeIndex2.x << 16 | homeIndex2.y << 8 | homeIndex2.z);
+                        const uint32_t homeCell1 = (cellData->cells[i] >> 1) & ((1 << 24) - 1);
+
+                        if (homeCell1 < homeCell2 &&
+                            CollisionPhysics::checkBallCollision(balls[ball1Index], balls[ball2Index]))
+                            CollisionPhysics::resolveBallCollision(balls[ball1Index], balls[ball2Index]);
                     }
                 }
             }

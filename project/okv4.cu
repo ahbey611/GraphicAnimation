@@ -186,15 +186,7 @@ namespace SpatialHashing
 
     // 用于计算网格索引
     __device__ void calculateGridIndex(const Vector3D &position, float cellSize,
-                                       int &gridX, int &gridY, int &gridZ)
-    {
-        gridX = (int)((position.x + LENGTH) / cellSize);
-        gridY = (int)(position.y / cellSize);
-        gridZ = (int)((position.z + WIDTH) / cellSize);
-    }
-
-    __device__ void calculateGridIndex2(const Vector3D &position, float cellSize,
-                                        INTVector3D &grid)
+                                       INTVector3D &grid)
     {
         grid.x = (int)((position.x + LENGTH) / cellSize);
         grid.y = (int)(position.y / cellSize);
@@ -202,32 +194,9 @@ namespace SpatialHashing
     }
 
     // 用于计算cell信息
-
     __device__ uint32_t calculateCellInfo(INTVector3D &grid, bool isHome)
     {
         return (uint32_t)(grid.x << 17 | grid.y << 9 | grid.z << 1 | (isHome ? HOME_CELL : PHANTOM_CELL));
-    }
-
-    // 计算相邻单元格的偏移量
-    __device__ void getNeighborOffsets(int *offsets, int &count)
-    {
-        // 预计算26个相邻单元格的偏移量（不包括自身）
-        count = 0;
-        for (int x = -1; x <= 1; x++)
-        {
-            for (int y = -1; y <= 1; y++)
-            {
-                for (int z = -1; z <= 1; z++)
-                {
-                    if (x == 0 && y == 0 && z == 0)
-                        continue;
-                    offsets[count * 3] = x;
-                    offsets[count * 3 + 1] = y;
-                    offsets[count * 3 + 2] = z;
-                    count++;
-                }
-            }
-        }
     }
 
     // 检查单元格是否在边界内
@@ -268,11 +237,6 @@ namespace SpatialHashing
                     INTVector3D newGrid = {home.x + x, home.y + y, home.z + z};
 
                     // 检查边界
-                    // if (newGrid.x < 0 || newGrid.x >= cellSizeInfo.cell.x ||
-                    //     newGrid.y < 0 || newGrid.y >= cellSizeInfo.cell.y ||
-                    //     newGrid.z < 0 || newGrid.z >= cellSizeInfo.cell.z)
-                    //     continue;
-
                     if (!isValidCell(newGrid, cellSizeInfo))
                         continue;
 
@@ -307,7 +271,6 @@ namespace SpatialHashing
     // 初始化
     __global__ void InitCells(CellData *cellData, Ball *balls, CellSizeInfo cellSizeInfo, int N)
     {
-        unsigned int count = 0;
         int index = blockIdx.x * blockDim.x + threadIdx.x;
         int stride = blockDim.x * gridDim.x;
 
@@ -319,7 +282,7 @@ namespace SpatialHashing
 
             // 计算home cell位置
             INTVector3D home;
-            calculateGridIndex2(ball.position, cellSizeInfo.size, home);
+            calculateGridIndex(ball.position, cellSizeInfo.size, home);
 
             // 设置home cell
             cellData->cells[cellOffset] = calculateCellInfo(home, true);
@@ -467,7 +430,6 @@ namespace SpatialHashing
 
     void RadixSortCells(CellData *cellData, int N,
                         unsigned int blocksNum)
-
     {
         CellData hostCellData;
 
