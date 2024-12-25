@@ -3,9 +3,10 @@
 #include "ball.hpp"
 #include "const.h"
 #include <vector>
-#include "collusion.cuh"
+#include "collision.cuh"
 #include "coor.hpp"
 #include <iostream>
+#include "wall.hpp"
 
 class ParticleSystem
 {
@@ -129,8 +130,9 @@ public:
             GLfloat specular[4] = {0.5f, 0.5f, 0.5f, 1.0f};
             GLfloat shininess = 30.0f;
 
-            Shader shader(color, ambient, diffuse, specular, shininess);
-            particles[i].Init(position, velocity, radius, shader);
+            Material shader(color, ambient, diffuse, specular, shininess);
+            particles[i]
+                .Init(position, velocity, radius, shader);
         }
     }
 

@@ -1,11 +1,9 @@
 #include <GL/freeglut.h>
 #include <iostream>
-#include "collusion.cuh"
+#include "collision.cuh"
 #include "const.h"
 #include "coor.hpp"
 #include "light.hpp"
-#include "shader.hpp"
-#include "ballset.hpp"
 #include "ball.hpp"
 #include "wall.hpp"
 #include "particle_system.hpp"
@@ -77,7 +75,7 @@ private:
 		glMatrixMode(GL_MODELVIEW);
 	}
 
-	// 计��器
+	// 计时器
 	static void timerCallback(int value)
 	{
 		glutPostRedisplay();
@@ -119,7 +117,7 @@ public:
 	// 添加配置结构体
 	struct SimConfig
 	{
-		int ballCount = 125;	// 默认150个球
+		int ballCount = 150;	// 默认150个球
 		float maxRadius = 1.0f; // 默认最大半径1.0
 	};
 	static SimConfig config;
@@ -138,40 +136,22 @@ public:
 					config.ballCount = std::atoi(argv[++i]);
 					if (config.ballCount <= 0 || config.ballCount > 200)
 					{
-						std::cerr << "球的数量必须在1-200之间" << std::endl;
+						std::cerr << "the ball count must be between 1 and 200" << std::endl;
 						return false;
 					}
 				}
 				else
 				{
-					std::cerr << "--ball 参数需要一个数值" << std::endl;
-					return false;
-				}
-			}
-			else if (arg == "--max_radius" || arg == "-r")
-			{
-				if (i + 1 < argc)
-				{
-					config.maxRadius = std::atof(argv[++i]);
-					if (config.maxRadius <= 0.0f || config.maxRadius > 2.0f)
-					{
-						std::cerr << "最大半径必须在0-2之间" << std::endl;
-						return false;
-					}
-				}
-				else
-				{
-					std::cerr << "--max_radius 参数需要一个数值" << std::endl;
+					std::cerr << "--ball need a number" << std::endl;
 					return false;
 				}
 			}
 			else if (arg == "--help" || arg == "-h")
 			{
-				std::cout << "使用方法: " << argv[0] << " [选项]" << std::endl
-						  << "选项:" << std::endl
-						  << "  -b, --ball <数量>        设置球的数量 (1-200)" << std::endl
-						  << "  -r, --max_radius <半径>  设置最大半径 (0-2)" << std::endl
-						  << "  -h, --help              显示帮助信息" << std::endl;
+				std::cout << "usage: " << argv[0] << " [options]" << std::endl
+						  << "options:" << std::endl
+						  << "  -b, --ball <number>        set the ball count (1-200)" << std::endl
+						  << "  -h, --help                 show help information" << std::endl;
 				return false;
 			}
 		}
@@ -203,9 +183,9 @@ public:
 		initializeWalls();
 		particles->initialize();
 
-		std::cout << "场景初始化完成" << std::endl
-				  << "球的数量: " << config.ballCount << std::endl
-				  << "最大半径: " << config.maxRadius << std::endl;
+		std::cout << "simulation scene initialized" << std::endl
+				  << "ball count: " << config.ballCount << std::endl
+				  << "max radius: " << config.maxRadius << std::endl;
 
 		glutReshapeFunc(reshapeCallback);
 		glutDisplayFunc(displayCallback);
@@ -235,9 +215,9 @@ private:
 		// 检查GPU是否成功
 		if (cudaGetDeviceProperties(&props, deviceId) == cudaSuccess)
 		{
-			std::cout << "GPU 设备: " << props.name << "\n"
-					  << "计算单元: " << props.multiProcessorCount << "\n"
-					  << "最大线程块: " << props.maxThreadsPerBlock << "\n";
+			std::cout << "GPU device: " << props.name << "\n"
+					  << "compute unit: " << props.multiProcessorCount << "\n"
+					  << "max thread block: " << props.maxThreadsPerBlock << "\n";
 			return true;
 		}
 		return false;

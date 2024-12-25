@@ -7,7 +7,6 @@ class Vector3D
 public:
     float x, y, z;
 
-    // 添加 CUDA 设备支持
     __host__ __device__ Vector3D() : x(0), y(0), z(0) {}
     __host__ __device__ Vector3D(float x_, float y_, float z_) : x(x_), y(y_), z(z_) {}
 

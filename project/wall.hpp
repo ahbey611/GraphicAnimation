@@ -3,7 +3,6 @@
 #include <math.h>
 #include "const.h"
 #include "coor.hpp"
-#include "shader.hpp"
 
 using namespace std;
 

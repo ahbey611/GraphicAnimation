@@ -146,18 +146,15 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="ball.hpp" />
-    <ClInclude Include="ballset.hpp" />
-    <ClInclude Include="camera.hpp" />
-    <ClInclude Include="collusion.cuh" />
+    <ClInclude Include="collision.cuh" />
     <ClInclude Include="const.h" />
     <ClInclude Include="coor.hpp" />
     <ClInclude Include="light.hpp" />
     <ClInclude Include="particle_system.hpp" />
-    <ClInclude Include="shader.hpp" />
     <ClInclude Include="wall.hpp" />
   </ItemGroup>
   <ItemGroup>
-    <CudaCompile Include="collusion.cu" />
+    <CudaCompile Include="collision.cu" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

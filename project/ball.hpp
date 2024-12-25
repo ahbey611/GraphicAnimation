@@ -5,8 +5,8 @@
 #include <vector>
 #include <math.h>
 #include "coor.hpp"
-#include "shader.hpp"
 #include "const.h"
+#include "wall.hpp"
 
 using namespace std;
 
@@ -17,12 +17,12 @@ public:
     Point3D speed;
     GLfloat radius;
     GLfloat weight;
-    Shader shader;
+    Material shader;
 
     Ball() {}
     ~Ball() {}
 
-    void Init(Point3D position, Point3D speed, GLfloat radius, Shader shader)
+    void Init(Point3D position, Point3D speed, GLfloat radius, Material shader)
     {
         this->position = position;
         this->speed = speed;
@@ -39,7 +39,8 @@ public:
         glMaterialfv(GL_FRONT, GL_AMBIENT, shader.ambient);
         glMaterialfv(GL_FRONT, GL_DIFFUSE, shader.diffuse);
         glMaterialfv(GL_FRONT, GL_SPECULAR, shader.specular);
-        glMaterialfv(GL_FRONT, GL_SHININESS, shader.shininess);
+        GLfloat shin[1] = {shader.shininess};
+        glMaterialfv(GL_FRONT, GL_SHININESS, shin);
 
         glPushMatrix();
         glTranslatef(position.x, position.y, position.z);

@@ -20,7 +20,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="collusion.cuh">
+    <ClInclude Include="collision.cuh">
       <Filter>Source Files</Filter>
     </ClInclude>
     <ClInclude Include="const.h">
@@ -29,22 +29,13 @@
     <ClInclude Include="coor.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="shader.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="wall.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="light.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="camera.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="ball.hpp">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="ballset.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="particle_system.hpp">
@@ -52,7 +43,7 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <CudaCompile Include="collusion.cu">
+    <CudaCompile Include="collision.cu">
       <Filter>Source Files</Filter>
     </CudaCompile>
   </ItemGroup>
